@@ -123,7 +123,7 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 		std::cerr << "Couldn't open the file\n";
 		return;
 	}
-  
+
 	const size_t bytesInMgb = 1048576;
 	
 	while (true)
@@ -165,4 +165,30 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 	}
 
 	file.close();
+}
+
+void sendInformation(std::queue <data_t>& dataQueue, std::vector <double>& executioSpeed, double & sizeOfFile)
+{
+	while (sizeOfFile > 1 || !dataQueue.empty())
+	{
+		if (!dataQueue.empty() && dataQueue.back().isError)
+		{
+			return;
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
+		double averagValue = 0;
+		for (size_t i = 0; i != executioSpeed.size(); ++i)
+		{
+			averagValue += executioSpeed[i];
+		}
+
+		averagValue /= executioSpeed.size();
+
+		std::cout << "\n";
+		std::cout << "Queue size at the moment: " << dataQueue.size() << "\n";
+		std::cout << "Average execution speed: " << averagValue << "\n";
+		std::cout << "Another " << sizeOfFile << " Mgb will be recorded" << "\n";
+	}
 }
