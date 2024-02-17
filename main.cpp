@@ -192,3 +192,37 @@ void sendInformation(std::queue <data_t>& dataQueue, std::vector <double>& execu
 		std::cout << "Another " << sizeOfFile << " Mgb will be recorded" << "\n";
 	}
 }
+
+int main()
+{
+	double sizeOfFile = 0;
+	size_t frequencyRate = 0;
+	bool isError = false;
+
+	std::cout << "Input size of file in Mbytes!\n";
+	std::cin >> sizeOfFile;
+	std::cout << "Input frequency rate in milliseconds!\n";
+	std::cin >> frequencyRate;
+
+	std::queue <data_t> data;
+	std::vector <double> executioSpeed;
+
+	std::thread read(createData, std::ref(data), std::ref(sizeOfFile), std::ref(frequencyRate));
+	std::thread write(writeData, std::ref(data), std::ref(executioSpeed), std::ref(sizeOfFile));
+	std::thread inform(sendInformation, std::ref(data), std::ref(executioSpeed), std::ref(sizeOfFile));
+
+	read.join();
+	write.join();
+	inform.join();
+
+	double averagValue = 0;
+	for (size_t i = 0; i != executioSpeed.size(); ++i)
+	{
+		averagValue += executioSpeed[i];
+	}
+
+	averagValue /= executioSpeed.size();
+
+	std::cout << "---RESULT---\n";
+	std::cout << " Average execution speed: " << averagValue << "\n";
+}
