@@ -15,9 +15,19 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 	size_t* buffer = (size_t*)malloc(sizeOfBufferInMgb * bytesInMgb);
 	data_t packet = { nullptr, 0, true };
 
+	if (buffer == NULL)
+	{
+		// отсановка всех процессов
+		std::cerr << "Memory allocation error\n";
+		dataQueue.push(packet);
+		return;
+	}
+
 	size_t index = 0;
 	size_t num = 0; // "пустое" значение, которым будет заполнять массив
 	size_t max_size = std::numeric_limits< size_t >::max();
+
+	std::unique_lock<std::mutex> lck(mtx); // Блокируем доступ другим потокам во избежании ошибок
 
 	while (sizeOfFile > 0)
 	{
@@ -81,6 +91,7 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 			dataQueue.push(packet);
 
 			std::cerr << "\n !!! The queue is full, we are losing data !!! \n";
+			while (!canFreeStore) cv.wait(lck); // блокировка процесса, пока не закончится запись в файл
 			free(buffer);
 			return;
 		}
@@ -88,5 +99,6 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 		std::this_thread::sleep_for(std::chrono::milliseconds(frequencyRate));
 	}
 
+	while (!canFreeStore) cv.wait(lck); // блокировка процесса, пока не закончится запись в файл
 	free(buffer);
 }
