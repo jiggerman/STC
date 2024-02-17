@@ -117,7 +117,13 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 {
 	std::ofstream file;
 	file.open("output.txt");
-
+	if (!file.is_open())
+	{
+		dataQueue.push({ nullptr, 0, true });
+		std::cerr << "Couldn't open the file\n";
+		return;
+	}
+  
 	const size_t bytesInMgb = 1048576;
 	
 	while (true)
