@@ -231,4 +231,6 @@ int main()
 
 	std::cout << "---RESULT---\n";
 	std::cout << " Average execution speed: " << averagValue << "\n";
+
+  return 0;
 }
