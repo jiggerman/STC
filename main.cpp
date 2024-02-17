@@ -204,6 +204,12 @@ int main()
 	std::cout << "Input frequency rate in milliseconds!\n";
 	std::cin >> frequencyRate;
 
+	if (!std::cin)
+	{
+		std::cerr << "Bad input! Try again\n";
+		return 1;
+	}
+
 	std::queue <data_t> data;
 	std::vector <double> executioSpeed;
 
