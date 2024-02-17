@@ -1,5 +1,15 @@
 #include <iostream>
-#include <cstddef>
+#include <queue>
+#include <thread>
+#include <chrono>
+#include <time.h>
+#include <limits>
+#include <mutex>
+#include <fstream>
+
+std::mutex mtx;
+std::condition_variable cv;
+bool canFreeStore = false;
 
 struct data_t
 {
@@ -101,4 +111,52 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 
 	while (!canFreeStore) cv.wait(lck); // блокировка процесса, пока не закончится запись в файл
 	free(buffer);
+}
+
+void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpeed, double & sizeOfFile)
+{
+	std::ofstream file;
+	file.open("output.txt");
+
+	const size_t bytesInMgb = 1048576;
+	
+	while (true)
+	{
+		canFreeStore = false;
+		cv.notify_one();
+
+		while (!dataQueue.empty())
+		{
+
+			if (dataQueue.back().isError)
+			{
+				canFreeStore = true;
+				cv.notify_one();
+				return;
+			}
+
+			clock_t start = clock();
+
+			for (size_t i = 0; i < dataQueue.front().size * bytesInMgb / sizeof(size_t); ++i)
+			{
+				file << *(dataQueue.front().ptr + i);
+			}
+
+			clock_t end = clock();
+			double milliseconds = end - start;
+			executioSpeed.push_back(milliseconds);
+
+			dataQueue.pop();
+		}
+
+		canFreeStore = true;
+		cv.notify_one();
+
+		if (dataQueue.empty() && sizeOfFile < 1)
+		{
+			break;
+		}
+	}
+
+	file.close();
 }
