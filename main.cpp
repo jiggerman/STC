@@ -17,6 +17,7 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 
 	size_t index = 0;
 	size_t num = 0; // "пустое" значение, которым будет заполнять массив
+	size_t max_size = std::numeric_limits< size_t >::max();
 
 	while (sizeOfFile > 0)
 	{
@@ -30,6 +31,16 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 			// "Создаем" 1 Мб 
 			for (size_t i = 0; i < bytesInMgb / sizeof(size_t); ++i)
 			{
+				if (num == max_size)
+				{
+					num = 0;
+				}
+
+				if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1))
+				{
+					index = 0;
+				}
+
 				buffer[index++] = num++;
 			}
 
@@ -41,6 +52,16 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 			// "Создаем" остаточные данные 
 			for (size_t i = 0; i < (size_t)(sizeOfFile * bytesInMgb / sizeof(size_t)) + 1; ++i)
 			{
+				if (num == max_size)
+				{
+					num = 0;
+				}
+
+				if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1))
+				{
+					index = 0;
+				}
+
 				buffer[index++] = num++;
 			}
 
