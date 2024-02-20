@@ -1,8 +1,9 @@
 #include <iostream>
 #include <queue>
 #include <thread>
+#include <condition_variable>
 #include <chrono>
-#include <time.h>
+#include <vector>
 #include <limits>
 #include <mutex>
 #include <fstream>
@@ -20,24 +21,24 @@ struct data_t
 
 void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_t frequencyRate)
 {
-	const size_t sizeOfBufferInMgb = 256; // Макс. - 256 МБ
-	const size_t bytesInMgb = 1048576; // Количество байт в 1ом МБ 
+	const size_t sizeOfBufferInMgb = 256; // Max. - 256 Mgb
+	const size_t bytesInMgb = 1048576; // bytes in 1 Mgb
 	size_t* buffer = (size_t*)malloc(sizeOfBufferInMgb * bytesInMgb);
 	data_t packet = { nullptr, 0, true };
 
 	if (buffer == NULL)
 	{
-		// отсановка всех процессов
+		// stop all pros
 		std::cerr << "Memory allocation error\n";
 		dataQueue.push(packet);
 		return;
 	}
 
 	size_t index = 0;
-	size_t num = 0; // "пустое" значение, которым будет заполнять массив
+	size_t num = 0; // "empty" num for write in "data"
 	size_t max_size = std::numeric_limits< size_t >::max();
 
-	std::unique_lock<std::mutex> lck(mtx); // Блокируем доступ другим потокам во избежании ошибок
+	std::unique_lock<std::mutex> lck(mtx); // Blocking access to other threads to avoid errors
 
 	while (sizeOfFile > 0)
 	{
@@ -48,7 +49,7 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 
 		if (--sizeOfFile > 1)
 		{
-			// "Создаем" 1 Мб 
+			// "Create" 1 Mgb
 			for (size_t i = 0; i < bytesInMgb / sizeof(size_t); ++i)
 			{
 				if (num == max_size)
@@ -69,7 +70,7 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 		}
 		else
 		{
-			// "Создаем" остаточные данные 
+			// "Create" residual data
 			for (size_t i = 0; i < (size_t)(sizeOfFile * bytesInMgb / sizeof(size_t)) + 1; ++i)
 			{
 				if (num == max_size)
@@ -89,7 +90,7 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 			packet.size = sizeOfFile;
 			dataQueue.push({ nullptr, 0, true });
 		}
-		
+
 		if (dataQueue.size() < 256)
 		{
 			packet.isError = false;
@@ -101,7 +102,7 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 			dataQueue.push(packet);
 
 			std::cerr << "\n !!! The queue is full, we are losing data !!! \n";
-			while (!canFreeStore) cv.wait(lck); // блокировка процесса, пока не закончится запись в файл
+			while (!canFreeStore) cv.wait(lck); // blocking the process until writing to the file is finished
 			free(buffer);
 			return;
 		}
@@ -109,7 +110,8 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 		std::this_thread::sleep_for(std::chrono::milliseconds(frequencyRate));
 	}
 
-	while (!canFreeStore) cv.wait(lck); // блокировка процесса, пока не закончится запись в файл
+  std::cout << "Ready for free memory WRITE\n";
+	while (!canFreeStore) cv.wait(lck); // blocking the process until writing to the file is finished
 	free(buffer);
 }
 
@@ -125,7 +127,7 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 	}
 
 	const size_t bytesInMgb = 1048576;
-	
+
 	while (true)
 	{
 		canFreeStore = false;
@@ -141,15 +143,15 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 				return;
 			}
 
-			clock_t start = clock();
+			clock_t start = std::chrono::system_clock::now();
 
 			for (size_t i = 0; i < dataQueue.front().size * bytesInMgb / sizeof(size_t); ++i)
 			{
 				file << *(dataQueue.front().ptr + i);
 			}
 
-			clock_t end = clock();
-			double milliseconds = end - start;
+			clock_t end = std::chrono::system_clock::now();
+			double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 			executioSpeed.push_back(milliseconds);
 
 			dataQueue.pop();
@@ -160,10 +162,15 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 
 		if (dataQueue.empty() && sizeOfFile < 1)
 		{
-			break;
+		  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+		  if (dataQueue.empty())
+		  {
+		    break;
+		  }
 		}
 	}
 
+  std::cout << "Ready for close file READ\n";
 	file.close();
 }
 
@@ -188,7 +195,7 @@ void sendInformation(std::queue <data_t>& dataQueue, std::vector <double>& execu
 
 		std::cout << "\n";
 		std::cout << "Queue size at the moment: " << dataQueue.size() << "\n";
-		std::cout << "Average execution speed: " << averagValue << "\n";
+		std::cout << "Average execution speed: " << averagValue << " ms\n";
 		std::cout << "Another " << sizeOfFile << " Mgb will be recorded" << "\n";
 	}
 }
@@ -230,7 +237,7 @@ int main()
 	averagValue /= executioSpeed.size();
 
 	std::cout << "---RESULT---\n";
-	std::cout << " Average execution speed: " << averagValue << "\n";
+	std::cout << " Average execution speed: " << averagValue << " ms\n";
 
   return 0;
 }
