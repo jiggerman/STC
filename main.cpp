@@ -3,6 +3,7 @@
 #include <thread>
 #include <condition_variable>
 #include <chrono>
+#include <ctime>
 #include <vector>
 #include <limits>
 #include <mutex>
@@ -57,15 +58,15 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 					num = 0;
 				}
 
-				if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1))
-				{
-					index = 0;
-				}
+        if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1))
+        {
+          index = 0;
+        }
 
 				buffer[index++] = num++;
 			}
 
-			packet.ptr = &buffer[index - bytesInMgb / sizeof(size_t)];
+			packet.ptr = (index > bytesInMgb / sizeof(size_t)) ? &buffer[index - bytesInMgb / sizeof(size_t) + 1] : &buffer[(sizeOfBufferInMgb - 1) * bytesInMgb / sizeof(size_t)];
 			packet.size = 1;
 		}
 		else
@@ -78,12 +79,12 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 					num = 0;
 				}
 
-				if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1))
+				if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1)) 
 				{
 					index = 0;
 				}
 
-				buffer[index++] = num++;
+				buffer[index++] = num++; 
 			}
 
 			packet.ptr = &buffer[index - bytesInMgb / sizeof(size_t)];
@@ -103,14 +104,13 @@ void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_
 
 			std::cerr << "\n !!! The queue is full, we are losing data !!! \n";
 			while (!canFreeStore) cv.wait(lck); // blocking the process until writing to the file is finished
-			free(buffer);
+			free(buffer); 
 			return;
 		}
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(frequencyRate));
 	}
 
-  std::cout << "Ready for free memory WRITE\n";
 	while (!canFreeStore) cv.wait(lck); // blocking the process until writing to the file is finished
 	free(buffer);
 }
@@ -143,14 +143,14 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 				return;
 			}
 
-			clock_t start = std::chrono::system_clock::now();
+			auto start = std::chrono::system_clock::now();
 
 			for (size_t i = 0; i < dataQueue.front().size * bytesInMgb / sizeof(size_t); ++i)
 			{
 				file << *(dataQueue.front().ptr + i);
 			}
 
-			clock_t end = std::chrono::system_clock::now();
+			auto end = std::chrono::system_clock::now();
 			double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 			executioSpeed.push_back(milliseconds);
 
@@ -170,7 +170,6 @@ void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpe
 		}
 	}
 
-  std::cout << "Ready for close file READ\n";
 	file.close();
 }
 
