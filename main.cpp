@@ -1,214 +1,18 @@
 #include <iostream>
-#include <queue>
-#include <thread>
-#include <condition_variable>
-#include <chrono>
-#include <ctime>
-#include <vector>
-#include <limits>
-#include <mutex>
-#include <fstream>
-
-std::mutex mtx;
-std::condition_variable cv;
-bool canFreeStore = false;
-
-struct data_t
-{
-	size_t* ptr;
-	double size;
-	bool isError;
-};
-
-void createData(std::queue <data_t> &dataQueue, double & sizeOfFile, const size_t frequencyRate)
-{
-	const size_t sizeOfBufferInMgb = 256; // Max. - 256 Mgb
-	const size_t bytesInMgb = 1048576; // bytes in 1 Mgb
-	size_t* buffer = (size_t*)malloc(sizeOfBufferInMgb * bytesInMgb);
-	data_t packet = { nullptr, 0, true };
-
-	if (buffer == NULL)
-	{
-		// stop all pros
-		std::cerr << "Memory allocation error\n";
-		dataQueue.push(packet);
-		return;
-	}
-
-	size_t index = 0;
-	size_t num = 0; // "empty" num for write in "data"
-	size_t max_size = std::numeric_limits< size_t >::max();
-
-	std::unique_lock<std::mutex> lck(mtx); // Blocking access to other threads to avoid errors
-
-	while (sizeOfFile > 0)
-	{
-		if (!dataQueue.empty() && dataQueue.back().isError)
-		{
-			break;
-		}
-
-		if (--sizeOfFile > 1)
-		{
-			// "Create" 1 Mgb
-			for (size_t i = 0; i < bytesInMgb / sizeof(size_t); ++i)
-			{
-				if (num == max_size)
-				{
-					num = 0;
-				}
-
-        if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1))
-        {
-          index = 0;
-        }
-
-				buffer[index++] = num++;
-			}
-
-			packet.ptr = (index > bytesInMgb / sizeof(size_t)) ? &buffer[index - bytesInMgb / sizeof(size_t) + 1] : &buffer[(sizeOfBufferInMgb - 1) * bytesInMgb / sizeof(size_t)];
-			packet.size = 1;
-		}
-		else
-		{
-			// "Create" residual data
-			for (size_t i = 0; i < (size_t)(sizeOfFile * bytesInMgb / sizeof(size_t)) + 1; ++i)
-			{
-				if (num == max_size)
-				{
-					num = 0;
-				}
-
-				if (index == (sizeOfBufferInMgb * bytesInMgb / sizeof(size_t) - 1)) 
-				{
-					index = 0;
-				}
-
-				buffer[index++] = num++; 
-			}
-
-			packet.ptr = &buffer[index - bytesInMgb / sizeof(size_t)];
-			packet.size = sizeOfFile;
-			dataQueue.push({ nullptr, 0, true });
-		}
-
-		if (dataQueue.size() < 256)
-		{
-			packet.isError = false;
-			dataQueue.push(packet);
-		}
-		else
-		{
-			packet.isError = true;
-			dataQueue.push(packet);
-
-			std::cerr << "\n !!! The queue is full, we are losing data !!! \n";
-			while (!canFreeStore) cv.wait(lck); // blocking the process until writing to the file is finished
-			free(buffer); 
-			return;
-		}
-
-		std::this_thread::sleep_for(std::chrono::milliseconds(frequencyRate));
-	}
-
-	while (!canFreeStore) cv.wait(lck); // blocking the process until writing to the file is finished
-	free(buffer);
-}
-
-void writeData(std::queue <data_t>& dataQueue, std::vector <double>& executioSpeed, double & sizeOfFile)
-{
-	std::ofstream file;
-	file.open("output.txt");
-	if (!file.is_open())
-	{
-		dataQueue.push({ nullptr, 0, true });
-		std::cerr << "Couldn't open the file\n";
-		return;
-	}
-
-	const size_t bytesInMgb = 1048576;
-
-	while (true)
-	{
-		canFreeStore = false;
-		cv.notify_one();
-
-		while (!dataQueue.empty())
-		{
-
-			if (dataQueue.back().isError)
-			{
-				canFreeStore = true;
-				cv.notify_one();
-				return;
-			}
-
-			auto start = std::chrono::system_clock::now();
-
-			for (size_t i = 0; i < dataQueue.front().size * bytesInMgb / sizeof(size_t); ++i)
-			{
-				file << *(dataQueue.front().ptr + i);
-			}
-
-			auto end = std::chrono::system_clock::now();
-			double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-			executioSpeed.push_back(milliseconds);
-
-			dataQueue.pop();
-		}
-
-		canFreeStore = true;
-		cv.notify_one();
-
-		if (dataQueue.empty() && sizeOfFile < 1)
-		{
-		  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-		  if (dataQueue.empty())
-		  {
-		    break;
-		  }
-		}
-	}
-
-	file.close();
-}
-
-void sendInformation(std::queue <data_t>& dataQueue, std::vector <double>& executioSpeed, double & sizeOfFile)
-{
-	while (sizeOfFile > 1 || !dataQueue.empty())
-	{
-		if (!dataQueue.empty() && dataQueue.back().isError)
-		{
-			return;
-		}
-
-		std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-
-		double averagValue = 0;
-		for (size_t i = 0; i != executioSpeed.size(); ++i)
-		{
-			averagValue += executioSpeed[i];
-		}
-
-		averagValue /= executioSpeed.size();
-
-		std::cout << "\n";
-		std::cout << "Queue size at the moment: " << dataQueue.size() << "\n";
-		std::cout << "Average execution speed: " << averagValue << " ms\n";
-		std::cout << "Another " << sizeOfFile << " Mgb will be recorded" << "\n";
-	}
-}
+#include "stc.hpp"
 
 int main()
 {
-	double sizeOfFile = 0;
-	size_t frequencyRate = 0;
-	bool isError = false;
+  using namespace chistyakov;
 
-	std::cout << "Input size of file in Mbytes!\n";
-	std::cin >> sizeOfFile;
-	std::cout << "Input frequency rate in milliseconds!\n";
+  double frequencyRate = 0;
+	std::cout << "Input frequency rate in milliseconds: ";
 	std::cin >> frequencyRate;
+
+  size_t repNum = 0;
+  std::cout << "Input number of repetitions: ";
+  std::cin >> repNum;
+  std::cout << "\n";
 
 	if (!std::cin)
 	{
@@ -216,27 +20,41 @@ int main()
 		return 1;
 	}
 
-	std::queue <data_t> data;
-	std::vector <double> executioSpeed;
+	Stc test;
 
-	std::thread read(createData, std::ref(data), std::ref(sizeOfFile), std::ref(frequencyRate));
-	std::thread write(writeData, std::ref(data), std::ref(executioSpeed), std::ref(sizeOfFile));
-	std::thread inform(sendInformation, std::ref(data), std::ref(executioSpeed), std::ref(sizeOfFile));
+	for (size_t i = 0; i < repNum; ++i)
+	{
+	  std::thread consumer_thread([&test] () { test.consumer(); });
+    std::thread producer_thread([&test] (double frequencyRate) { test.producer(frequencyRate); }, std::ref(frequencyRate));
 
-	read.join();
-	write.join();
-	inform.join();
+    if (i % 50 == 0)
+    {
+      std::cout << "number of repetitions: " << repNum - i << "\n";
+    }
+
+    consumer_thread.join();
+    producer_thread.join();
+  }
+
+  std::vector <double> executionSpeed = test.getExecutionSpeed();
 
 	double averagValue = 0;
-	for (size_t i = 0; i != executioSpeed.size(); ++i)
+	double maxS = 0;
+	double minS = executionSpeed[0];
+
+	for (size_t i = 0; i != executionSpeed.size(); ++i)
 	{
-		averagValue += executioSpeed[i];
+	  maxS = std::max(maxS, executionSpeed[i]);
+	  minS = std::min(minS, executionSpeed[i]);
+		averagValue += executionSpeed[i];
 	}
 
-	averagValue /= executioSpeed.size();
+	averagValue /= executionSpeed.size();
 
 	std::cout << "---RESULT---\n";
-	std::cout << " Average execution speed: " << averagValue << " ms\n";
+	std::cout << "Average execution speed: " << averagValue << " ms\n";
+	std::cout << "Average execution speed __MAX__: " << maxS << " ms\n";
+  std::cout << "Average execution speed __MIN__: " << minS << " ms\n";
 
   return 0;
 }
